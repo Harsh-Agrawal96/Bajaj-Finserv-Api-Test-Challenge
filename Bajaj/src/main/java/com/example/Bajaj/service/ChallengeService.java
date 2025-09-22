@@ -8,7 +8,10 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
 @Service
@@ -26,28 +29,46 @@ public class ChallengeService implements CommandLineRunner {
         // Create the initial request body with your details [cite: 11, 12, 13, 14]
         UserRequest userRequest = new UserRequest("John Doe", "REG12347", "john@example.com");
 
-        // Send the first POST request to generate the webhook [cite: 4, 8, 9]
-        System.out.println("Step 1: Generating webhook...");
-        WebhookResponse webhookResponse = restTemplate.postForObject(GENERATE_WEBHOOK_URL, userRequest, WebhookResponse.class);
+        System.out.println("Step 1: Generating webhook with details: " + userRequest);
+        try {
+            // Use 'exchange' instead of 'postForObject' to get the full response
+            ResponseEntity<WebhookResponse> responseEntity = restTemplate.exchange(
+                GENERATE_WEBHOOK_URL,
+                HttpMethod.POST,
+                new HttpEntity<>(userRequest),
+                WebhookResponse.class
+            );
 
-        if (webhookResponse == null || webhookResponse.getWebhookURL() == null) {
-            System.err.println("Failed to get a valid webhook response.");
-            return;
+            WebhookResponse webhookResponse = responseEntity.getBody();
+
+            if (webhookResponse == null || webhookResponse.getWebhookURL() == null) {
+                System.err.println("The server responded, but the webhook data is missing. Response: " + webhookResponse);
+                return;
+            }
+            
+            System.out.println("Webhook URL received: " + webhookResponse.getWebhookURL());
+            System.out.println("Access Token received.");
+
+            
+            System.out.println("Step 2: Solving the SQL problem...");
+            String finalQuery = solveSqlProblem(userRequest.getRegNo());
+            System.out.println("Final SQL Query: " + finalQuery);
+
+            System.out.println("Step 3: Submitting the solution...");
+            submitSolution(webhookResponse.getWebhookURL(), webhookResponse.getAccessToken(), finalQuery);
+            
+            System.out.println("Challenge process completed successfully!");
+
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            
+            System.err.println("An HTTP error occurred while generating the webhook!");
+            System.err.println("Status Code: " + e.getStatusCode());
+            System.err.println("Error Body: " + e.getResponseBodyAsString());
+            System.err.println("Check the 'Error Body' above for the reason.");
+        } catch (Exception e) {
+        
+            System.err.println("An unexpected error occurred: " + e.getMessage());
         }
-
-        System.out.println("Webhook URL received: " + webhookResponse.getWebhookURL());
-        System.out.println("Access Token received.");
-
-        // Solve the SQL problem [cite: 5]
-        System.out.println("Solving the SQL problem...");
-        String finalQuery = solveSqlProblem(userRequest.getRegNo());
-        System.out.println("Final SQL Query: " + finalQuery);
-
-        //Prepare and send the solution to the webhook URL [cite: 6]
-        System.out.println("Submitting the solution...");
-        submitSolution(webhookResponse.getWebhookURL(), webhookResponse.getAccessToken(), finalQuery);
-
-        System.out.println("Challenge process completed successfully!");
     }
 
     private String solveSqlProblem(String regNo) {
